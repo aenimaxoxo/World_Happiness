@@ -1,0 +1,736 @@
+---
+title: "World Happiness Report"
+author: "Michael Rose"
+date: "November 9, 2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+happ <- read.csv("file:///C:/Users/Dr. Neptune/Desktop/ISL Final Project/2016.csv")
+cntry <- read.csv("file:///C:/Users/Dr. Neptune/Desktop/ISL Final Project/Countries.csv")
+cntry2 <- read.csv("file:///C:/Users/Dr. Neptune/Desktop/ISL Final Project/country_per_cap_gdp_unemployment_gov_type_pop.csv")
+library(dplyr)
+library(boot)
+library(formattable)
+library(ggplot2)
+library(ggthemes)
+library(viridis)
+library(leaps)
+library(MASS)
+library(glmnet)
+library(pls)
+library(HH)
+library(caret)
+library(formattable)
+library(splines)
+library(akima)
+library(gam)
+```
+
+# Documentation
+
+### Variables
+
+**About the data**: 
+
+The happiness scores and rankings use data from the Gallup World Poll. The scores are based on answers to the main life evaluation question asked in the poll. This question, known as the Cantril ladder, asks respondents to think of a ladder with the best possible life for them being a 10 and the worst possible life being a 0 and to rate their own current lives on that scale. 
+
+**Happiness Rank**:
+
+The rankings across the countries surveyed. 
+
+**Happiness Score**:
+
+A score from 1 to 10 averaged over a country. This is a response to the cantril ladder explained above. 
+
+**Life Expectancy**:
+
+Healthy Life Expectancy (HLE). The time series of healthy life expectancy at birth are calculated by the authors based on data from the World Health Organization (WHO), the World Development Indicators (WDI), and statistics published in journal articles. The challenge is that the healthy life expectancy, unlike the simple life expectancy, is not widely available as time series. In the WHO's Global Health Observatory Data Repository, the statistics of healthy life expectancy are reported only for the years of 2000 and 2012. In our effort to derive the time series of healthy life expectancy for our sample period (2005 to 2016), we use WDI's non-health adjusted life expectancy, which is available as time series up to the year 2014, as the basis of our calculation. Using country-specific ratios of healthy life expectancy to total life expectancy in 2012, available from the WHO, we adjust the time series of total life expectancy to healthy life expectancy by simple multiplication, assuming that the ratio remains constant within each country over the sample period. Three countries/regions are missing due to the lack of health/total life expectancy ratio. One is Hong Kong. We calculate its ratio using relevant estimates in "Healthy life expectancy in Hong Kong Special Administrative Region of China," by C.K.Law, & P.S.F. Yip, published at the Bulletin of the World Health Organization, 2003, 81 (1). Another is Puerto Rico. We set its ratio to the U.S. ratio of 0.886. The third is Kosovo, we set its ratio to the world average. The estimated life expectancy for Taiwan and the Palestinian Territories are available in "Healthy life expectancy for 187 countries, 1990 - 2010: a systematic analysis for the Global Burden Disease Study 2010," by Joshua A Salomon et al, The Lancet, Volume 380, Issue 9859. Once we have the data, we use intrapolation and extrapolation to fill in the missing values (when necessary) and to extend the period to 2016. Not all the countries/territories mentioned above are necessarily included in the most recent happiness ranking. The HLE is constructed regardless of a country/territory's presence in a particular ranking.
+
+**Freedom**:
+
+Freedom to make life choices is the national average of responses to the GWP question "Are you satisfied or dissatisfied with your freedom to choose what you do with your life?"
+
+
+**Trust(Government Corruption)**:
+
+Corruption Perception: The measure is the national average of the survey responses to two questions in the GWP: "Is corruption widespread throughout the government or not" and "Is corruption widespread within businesses or not?" The overall perception is just the average of the two 0-or-1 responses. In case the perception of government corruption is missing, we use the perception of business corruption as the overall perception. The corruption perception at the national level is just the average response of the overall perception at the individual level.
+
+**GDP per Capita**:
+
+The statistics of GDP per capita (variable name gdp) in purchasing power parity (PPP) at constant 2011 international dollar prices are from the August 10, 2016 release of the World Development Indicators (WDI). The GDP figures for Taiwan are from the Penn World Table 7.1. Syria and Argentina are missing the GDP numbers in the WDI release but were present in earlier releases.  We use the numbers from the earlier release, after adjusting their levels by a factor of 1.17 to take into account changes in the implied prices when switching from the PPP 2005 prices used in the earlier release to the PPP 2011 prices used in the latest release. The factor of 1.17 is the average ratio derived by dividing the US GDP per capita under the 2011 prices with their counterparts under the 2005 prices. The same 1.17 is used to adjust the Taiwanese numbers, which are originally PPP dollars at 2005 constant prices.
+
+**Literacy Rate**:
+
+The figures represented are almost entirely collected by the UNESCO Institute for Statistics (UIS) on behalf of UNESCO with 2015 estimates based on people aged 15 or over who can read and write. Where data is taken from a different source, notes are provided. The data is collated by mostly using surveys within the last ten years which are self-declared by the persons in question.UIS provide estimates based on these for the year 2015 with a Global Age-specific Literacy Projections Model (GALP).
+
+**Infant Mortality**:
+
+Infant mortality rate compares the number of deaths of infants under one year old in a given year per 1,000 live births in the same year. This rate is often used as an indicator of the level of health in a country.
+
+**Population**:
+
+Primarily based on the ISO standard ISO 3166-1. The population figures do not reflect the practice of countries that report significantly different populations of citizens domestically and overall. Some countries, notably Thailand, do not report total population, exclusively counting citizens; for total populations an international agency must issue an estimate.
+
+**Net Migration**:
+
+The difference between the number of persons entering and leaving a country during the year, per 1,000 persons (based on midyear population).
+
+**Unemployment Rate**:
+
+Methods of calculation and presentation of unemployment rate vary from country to country. Some countries count insured unemployed only, some count those in receipt of welfare benefit only, some count the disabled and other permanently unemployable people, some countries count those who choose (and are financially able) not to work, supported by their spouses and caring for a family, some count students at college and so on. There may also be differences in the minimum requirements and some consider people employed even if only marginally associated with employment market (for example, working only one hour per week). There can be differences in the age limit. For example, Eurostat uses 15 to 74 years old when calculating unemployment rate, and the Bureau of Labor Statistics uses anyone 16 years of age or older (in both cases, people who are under education, retired, on maternity/paternity leave, prevented from working due to health, or do not work but have been inactive in seeking employment in the last four weeks are excluded from the workforce, and therefore not counted as unemployed). Unemployment rates are often seasonally adjusted to avoid variations that depend on time of year. Employment rate as a percentage of total population in working age is sometimes used instead of unemployment rate.
+
+For purposes of comparison, harmonized values are published by International Labour Organization (ILO) and by OECD. The ILO harmonized unemployment rate refers to those who are currently not working but are willing and able to work for pay, currently available to work, and have actively searched for work. The OECD harmonized unemployment rate gives the number of unemployed persons as a percentage of the labour force.
+
+**Government Type**:
+
+Type of Government System. 
+
+Republic: 
+
+These are systems in which a president is the active head of the executive branch of government and is elected and remains in office independently of the legislature. 
+
+Absolute monarchies: 
+
+Specifically, monarchies in which the monarch's exercise of power is unconstrained by any substantive constitutional law.
+
+Constitutional monarchies:
+
+These are systems in which the head of state is a constitutional monarch; the existence of their office and their ability to exercise their authority is established and restrained or held back by constitutional law.
+
+
+# Methods and Techniques
+
+**Cross Validation:** 
+
+Cross-validation is a technique to evaluate predictive models by partitioning the original sample into a training set to train the model, and a test set to evaluate it. In k-fold cross-validation, the original sample is randomly partitioned into k equal size subsamples.
+
+**Lasso: **
+
+LASSO - Least Absolute Shrinkage and Selection Operator - was first formulated by Robert Tibshirani in 1996. It is a powerful method that perform two main tasks: regularization and feature selection. The LASSO method puts a constraint on the sum of the absolute values of the model parameters, the sum has to be less than a fixed value (upper bound). In order to do so the method apply a shrinking (regularization) process where it penalizes the coefficients of the regression variables shrinking some of them to zero. During features selection process the variables that still have a non-zero coefficient after the shrinking process are selected to be part of the model. The goal of this process is to minimize the prediction error.
+
+In practice the tuning parameter ??, that controls the strength of the penalty, assume a great importance. Indeed when ?? is sufficiently large then coefficients are forced to be exactly equal to zero, this way dimensionality can be reduced. The larger is the parameter ?? the more number of coefficients are shrinked to zero. On the other hand if ?? = 0 we have an OLS (Ordinary Least Sqaure) regression.
+
+**Local Regression: **
+
+LOESS and LOWESS (locally weighted scatterplot smoothing) are two strongly related non-parametric regression methods that combine multiple regression models in a k-nearest-neighbor-based meta-model. "LOESS" is a later generalization of LOWESS; although it is not a true acronym, it may be understood as standing for "LOcal regrESSion".[1]
+
+LOESS and LOWESS thus build on "classical" methods, such as linear and nonlinear least squares regression. They address situations in which the classical procedures do not perform well or cannot be effectively applied without undue labor. LOESS combines much of the simplicity of linear least squares regression with the flexibility of nonlinear regression. It does this by fitting simple models to localized subsets of the data to build up a function that describes the deterministic part of the variation in the data, point by point. In fact, one of the chief attractions of this method is that the data analyst is not required to specify a global function of any form to fit a model to the data, only to fit segments of the data.
+
+**Smoothing Splines: **
+
+Smoothing splines are function estimates obtained from a set of noisy observations in order to balance a measure of goodness of fit with a derivative based measure of the smoothness. They provide a means for smoothing noisy data. The most familiar example is the cubic smoothing spline, but there are many other possibilities.
+
+**Generalized Additive Models: **
+
+In statistics, a generalized additive model (GAM) is a generalized linear model in which the linear predictor depends linearly on unknown smooth functions of some predictor variables, and interest focuses on inference about these smooth functions. GAMs were originally developed by Trevor Hastie and Robert Tibshirani[1] to blend properties of generalized linear models with additive models.
+
+Information Criterion: 
+
+**R^2^: **
+
+R-squared is a statistical measure of how close the data are to the fitted regression line. It is also known as the coefficient of determination, or the coefficient of multiple determination for multiple regression.
+
+R-squared = Explained variation / Total variation
+
+**Adjusted R^2^: **
+
+The adjusted R-squared is a modified version of R-squared that has been adjusted for the number of predictors in the model. The adjusted R-squared increases only if the new term improves the model more than would be expected by chance. It decreases when a predictor improves the model by less than expected by chance. The adjusted R-squared can be negative, but it's usually not.  It is always lower than the R-squared.
+
+**Cp: **
+
+The equation for Cp is often written ET / NT. ET stands for Engineering Tolerance, which is the width between the specification limits. NT stands for Natural Tolerance, which is the width that should contain almost all of the data from the process. Traditionally, NT is 6 times the standard deviation.
+
+We often describe Cp as the capability the process could achieve if the process was perfectly centered between the specification limits.
+
+**BIC: **
+
+In statistics, the Bayesian information criterion (BIC) or Schwarz criterion (also SBC, SBIC) is a criterion for model selection among a finite set of models; the model with the lowest BIC is preferred. It is based, in part, on the likelihood function and it is closely related to the Akaike information criterion (AIC).
+
+When fitting models, it is possible to increase the likelihood by adding parameters, but doing so may result in overfitting. Both BIC and AIC attempt to resolve this problem by introducing a penalty term for the number of parameters in the model; the penalty term is larger in BIC than in AIC.
+
+# Tables and Early Visualization
+
+First we will combine 2 data sets and do some cleaning. 
+
+```{r, echo=TRUE}
+# join the 2 data sets on country
+countries <- merge(cntry, cntry2, by=c("Country"))
+mydata <- merge(happ, countries, by=c("Country"))
+
+# select a subset of the variables
+mydata <- subset(mydata, select = c(Country, Region,Happiness.Rank, Happiness.Score, Health..Life.Expectancy., Freedom, Trust..Government.Corruption., GDPPC, Literacy, InfantMortality, Population, NetMigration, unemployment_rate, gov_type))
+
+# change column names
+colnames(mydata) <- c("Country", "Region", "Happiness Rank", "Happiness Score", "Life Expectancy", "Freedom", "Trust (Government Corruption)", "GDP per Capita", "Literacy Rate", "Infant Mortality", "Population", "Net Migration", "Unemployment Rate", "Government Type")
+
+# Change numbers
+mydata$`Life Expectancy` <- mydata$`Life Expectancy` * 100
+
+# create dummy variables
+levels(mydata$Region)
+
+levels(mydata$`Government Type`)
+
+govtype.factor <- factor(mydata$`Government Type`)
+dummies1 <- model.matrix(~govtype.factor)
+
+region.factor <- factor(mydata$Region)
+dummies2 <- model.matrix(~region.factor)
+
+mydata <- cbind(mydata, dummies1)
+mydata <- cbind(mydata, dummies2)
+
+mydata <- subset(mydata, select = -`(Intercept)`)
+
+
+#print(dummies)
+
+#dummy_vars <- dummyVars(" ~ Region + `Government Type`", data = mydata, fullRank = T)
+
+#trsf <- data.frame(predict(dummy_vars, newdata = mydata))
+#print(trsf)
+
+#names(mydata)
+
+fix(mydata)
+
+# create a mean squared error function
+mse <- function(sm) 
+    mean(sm$residuals^2)
+```
+
+
+### Data Table: 
+
+
+```{r, echo=TRUE}
+# create a table to see data
+mydata %>%
+  arrange((`Happiness Rank`)) %>%
+    head() %>%
+    formattable(list(
+      `Happiness Score` = color_bar("yellow")
+    ))
+```
+
+### Visualization
+
+```{r, echo=TRUE}
+# set up graph plots of happiness against each variable
+
+
+par(mfrow=c(2,2))
+
+ggplot(mydata, aes(`Life Expectancy`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Freedom`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Trust (Government Corruption)`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`GDP per Capita`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Literacy Rate`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Infant Mortality`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Population`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Population`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14)) + coord_trans(x = "log10") + labs(x="Log (base 10) of Population")
+
+ggplot(mydata, aes(`Net Migration`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Unemployment Rate`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14))
+
+ggplot(mydata, aes(`Government Type`)) + geom_bar(aes(fill = Region), position = "identity") + scale_color_viridis(option = "plasma", discrete=T) + theme_minimal() + theme(text = element_text(size=14), axis.text.x = element_text(size = 10, angle = 45, hjust = 1, vjust = 1))
+
+ggplot(mydata, aes(`Region`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14), axis.text.x = element_text(size = 10, angle = 45, hjust = 1, vjust = 1))
+```
+
+# Analysis
+
+### What things affect happiness?
+
+First we will take a look at what effect variables have on happiness.  
+
+```{r, echo=TRUE}
+# reproducibility
+set.seed(8)
+
+# set up training and test sets
+train <- sample(c(TRUE, FALSE), nrow(mydata), rep=TRUE)
+test <- (!train)
+
+# check dimensions on data 
+#dim(mydata)
+
+# check NA values for Happiness Score
+#sum(is.na(mydata$`Happiness Score`))
+
+# use reg subsets to find best subset of variables possible given a number of predictors. Here we will use all variables
+regfit_happiness_best <- regsubsets(`Happiness Score` ~ `Region` + `Government Type` + `Life Expectancy` + `Freedom` + `Trust (Government Corruption)` + `GDP per Capita` + `Literacy Rate` + `Infant Mortality` + `Population` + `Net Migration` + `Unemployment Rate`, mydata[train,], nvmax=9)
+
+# give summary of regfit
+regfit_summary <- summary(regfit_happiness_best)
+
+# show summary of RSS
+plot(regfit_summary$rss, xlab = "Number of Variables", ylab = "RSS")
+```
+
+From the above, we can see that the RSS value decreases monotonically as more variables are added (as expected). We can now compare different model selection criteria to figure out the best fit.
+
+
+
+#### Comparison of Fit with Information Criterion
+
+```{r, echo=TRUE}
+par(mfrow=c(2,2))
+
+#R^2
+plot(regfit_summary$rsq, xlab="Number of Variables", ylab = "R Squared")
+
+# color minimum point green
+points(which.max(regfit_summary$rsq), regfit_summary$rsq[which.max(regfit_summary$rsq)], col="green", cex=2, pch=20)
+
+#Adjusted R^2
+plot(regfit_summary$adjr2, xlab="Number of Variables", ylab = "Adjusted R^2")
+
+# color maximum point green
+points(which.max(regfit_summary$adjr2), regfit_summary$adjr2[which.max(regfit_summary$adjr2)], col="green", cex=2, pch=20)
+
+#Cp
+plot(regfit_summary$cp, xlab="Number of Variables", ylab = "Cp")
+
+# color minimum point green
+points(which.min(regfit_summary$cp), regfit_summary$cp[which.min(regfit_summary$cp)], col="green", cex=2, pch=20)
+
+#BIC
+plot(regfit_summary$bic, xlab="Number of Variables", ylab = "BIC")
+
+# color minimum point green
+points(which.min(regfit_summary$bic), regfit_summary$bic[which.min(regfit_summary$bic)], col="green", cex=2, pch=20)
+
+```
+
+The plots above show the number of variables upon which the information criterion is maximized or minimized. From the graphs above:
+
+* our R^2^ is maximized with 10 variables
+* our adjusted R^2^ is also maximized with 10 variables
+* our Cp is minimized with 7 variables
+* our BIC is minimized with 6 variables
+
+From this information we will find the best models that conform to each criteria and test the models against a seperate test data set. 
+
+#### Variable Selection for Criterion
+
+```{r, echo=TRUE}
+# R^2
+plot(regfit_happiness_best, scale="r2")
+
+# Best Model for R^2
+coef(regfit_happiness_best, 10)
+
+
+# Adjusted R^2 - This is the exact same as R^2
+
+plot(regfit_happiness_best, scale="adjr2")
+
+# Best Model for Adjusted R^2
+coef(regfit_happiness_best, 10)
+
+
+# Cp
+plot(regfit_happiness_best, scale="Cp")
+
+# Best Model for Cp
+coef(regfit_happiness_best, 7)
+
+# BIC
+plot(regfit_happiness_best, scale="bic")
+
+# Best Model for BIC
+coef(regfit_happiness_best, 6)
+```
+
+The graphics above show the best subset for which each information criterion is maximized or minimized. The Adjusted R^2^ was left out, as it has the same model as regular R^2 max in this case. 
+
+
+### Model Testing for Information Criterion
+
+```{r, echo=TRUE}
+
+# R^2 max model on cross validated set
+
+rsqmod <- lm(mydata$`Happiness Score` ~ mydata$`region.factorEastern Asia` + mydata$`region.factorLatin America and Caribbean` + mydata$`region.factorMiddle East and Northern Africa` + mydata$`region.factorSoutheastern Asia` + mydata$`region.factorSouthern Asia` + mydata$`Government Type` + mydata$Freedom + mydata$`GDP per Capita` + mydata$`Literacy Rate` + mydata$govtype.factorRepublic, data = mydata[test,])
+
+# MSE Cross validated R squared model
+
+mean(rsqmod$residuals^2)
+
+# Adjusted R^2 max model
+#adjrsquaredmodel <- lm.regsubsets(regfit_happiness_best, 9)
+# MSE R^2
+#mean(adjrsquaredmodel$residuals^2)
+
+# Cp min model
+cpmodel <- lm(mydata$`Happiness Score` ~ mydata$`region.factorCentral and Eastern Europe` + mydata$`region.factorLatin America and Caribbean` + mydata$`Government Type` + mydata$`GDP per Capita` + mydata$`Literacy Rate` + mydata$Population + mydata$govtype.factorRepublic, data = mydata[test,])
+
+# MSE Cross Validated Cp model
+mean(cpmodel$residuals^2)
+
+# BIC min model
+
+bicmodel <- lm(mydata$`Happiness Score` ~ mydata$`region.factorLatin America and Caribbean` + mydata$`govtype.factorn/a` + mydata$`GDP per Capita` + mydata$`Literacy Rate` + mydata$Population + mydata$govtype.factorRepublic, data = mydata[test,])
+
+# MSE Cross Validated BIC
+mean(bicmodel$residuals^2)
+
+```
+
+From the above cross validated multiple regression models, we see that the cross validated error is lowest with R^2, and greatest with BIC. 
+
+Let's look at selecting variables using:
+
+#### Cross Validation
+
+```{r, echo=TRUE}
+# use cross validation to pick variables
+
+# reproducibility
+set.seed(8)
+
+# set up training and test sets
+train <- sample(c(TRUE, FALSE), nrow(mydata), rep=TRUE)
+test <- (!train)
+
+# apply regsubsets to training set
+regfit_crossvalidated <- regsubsets(`Happiness Score`~ `Government Type`  + `Region`  + `Life Expectancy` + `Freedom` + `Trust (Government Corruption)` + `GDP per Capita` + `Literacy Rate` + `Infant Mortality` + `Population` + `Net Migration` + `Unemployment Rate`, data=mydata[train,], nvmax=9)
+
+# create a matrix for testing the models on test data
+test_matrix <- model.matrix(`Happiness Score`~ `Government Type`  + `Region`  + `Life Expectancy` + `Freedom` + `Trust (Government Corruption)` + `GDP per Capita` + `Literacy Rate` + `Infant Mortality` + `Population` + `Net Migration` + `Unemployment Rate`, data=mydata[test,])
+
+# predict method
+predict.regsubsets <- function(object, newdata, id, ...){
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id=id)
+  xvars <- names(coefi)
+  mat[, xvars]%*%coefi
+}
+
+# loop through models of each size and put them in the matrix. Then compute test MSE
+val.errors =rep(NA ,9)
+for(i in 1:9){
+  coefi = coef(regfit_crossvalidated, id=i)
+  pred = test_matrix[,names(coefi)] %*% coefi
+  val.errors[i]= mean((mydata$`Happiness Score`[test]-pred)^2)
+}
+
+# cross validation
+set.seed(16)
+# set number of folds
+k_folds <- 10
+folds <- sample(1:k_folds, nrow(mydata), replace=TRUE)
+# error matrix
+cv_error_matrix <- matrix(NA, k_folds, 9, dimnames = list(NULL, paste(1:9)))
+
+# for loop that performs cross validation. This gives us a 10*9 matrix of which the (i, j)th element corresponds to the test MSE for the ith cross validation fold for the best j-variable model 
+for (j in 1:k_folds){
+  best_fit <- regsubsets(`Happiness Score`~ `Government Type`  + `Region` + `Life Expectancy` + `Freedom` + `Trust (Government Corruption)` + `GDP per Capita` + `Literacy Rate` + `Infant Mortality` + `Population` + `Net Migration` + `Unemployment Rate`, data=mydata[folds != j,], nvmax=9)
+  for (i in 1:9){
+    pred <- predict(best_fit, mydata[folds == j,], id=i)
+    cv_error_matrix[j, i] <- mean((mydata$`Happiness Score`[folds==j]-pred)^2)
+  }
+}
+
+# average over the columns of the matrix to obtain a vecotr for which the jth element is the cross validation error for the j-variable model
+mean_cv_errors <- apply(cv_error_matrix, 2, mean)
+which.min(mean_cv_errors)
+
+
+#find the best fit by checking the minimum element of our errors vector
+#which.min(val.errors)
+# return the best model on training set
+
+coef(best_fit, which.min(mean_cv_errors))
+
+best_cv_fit <- lm(mydata$`Happiness Score` ~ mydata$`region.factorLatin America and Caribbean` + mydata$`Life Expectancy` + mydata$`Trust (Government Corruption)` + mydata$`GDP per Capita`, data = mydata[test,])
+
+mean(best_cv_fit$residuals^2)
+
+
+# plot 
+par(mfrow=c(1,1))
+plot(mean_cv_errors, type='b', xlab="Number of Variables", ylab="Mean Cross Validated Errors")
+```
+
+From the cross validation variable selection above, we see that a model with 4 variables has been selected. Not only is this model succinct, it has a very low cross validated mean square error of .25
+
+#### Lasso
+
+We will now try the Lasso for variable selection. 
+
+```{r, echo=TRUE}
+# create x and y matrices to pass into model-fitting function
+x_matrix_lasso <- model.matrix(`Happiness Score`~ `Government Type`  + `Region`  + `Life Expectancy` + `Freedom` + `Trust (Government Corruption)` + `GDP per Capita` + `Literacy Rate` + `Infant Mortality` + `Population` + `Net Migration` + `Unemployment Rate`, mydata)[,-1]
+
+y_matrix_lasso <- mydata$`Happiness Score`
+
+# create test set
+y_test <- y_matrix_lasso[test]
+
+# create lasso model
+lasso_model <- glmnet(x_matrix_lasso[train,], y_matrix_lasso[train], alpha = 1)
+
+# plot variable dropout
+plot(lasso_model)
+
+# cross validation
+set.seed(24)
+lasso_cv <- cv.glmnet(x_matrix_lasso[train,], y_matrix_lasso[train], alpha=1)
+plot(lasso_cv)
+
+# find best lambda value for penalty function
+bestlambdaval <- lasso_cv$lambda.min
+lasso.pred <- predict(lasso_model, s=bestlambdaval, newx=x_matrix_lasso[test,])
+
+# print out lasso variables
+
+out <- glmnet(x_matrix_lasso, y_matrix_lasso, alpha = 0)
+lasso.coef <- predict(out, type="coefficients", s=bestlambdaval)[1:10,]
+lasso.coef
+
+# return mean squared error
+mean((lasso.pred - y_test)^2)
+```
+
+From the above, we see that the cross validated lasso variable selection technique performed poorly. The technique generated a 9 variable model with a cross validated mean squared error of .338. 
+
+### Which variables affect happiness score the most? 
+
+From our analysis above, it seems that the best model was the cross validated model. From this, we can say that the most pertinent variables that affect happiness score are the following: 
+
+```
+                  (Intercept) RegionLatin America and Caribbean 
+                     3.594550e+00                      8.180867e-01 
+                `Life Expectancy`   `Trust (Government Corruption)` 
+                     2.064332e-02                      2.619762e+00 
+                 `GDP per Capita` 
+                     1.948194e-05 
+```
+
+Interpreted, in order of magnitude: 
+
+* People who trust their government and don't believe that the government is corrupt are much happier (by an entire 2.6 points / 10)
+
+* People are ever so slightly happier in Latin America and the Caribbean. I don't blame them, sounds nice.
+
+* The citizens of happier countries tend to live a little longer, but not too much longer.
+
+* The citizens of happier countries have a bit more money than less happy countries. This will be looked at further in upcoming sections. 
+
+
+
+### Which regions are the happiest? Least happy? 
+
+We can compare the happiness levels of each region with a nice barplot: 
+
+```{r, echo=TRUE}
+
+# West Europe Happiness
+west_europe_happiness<- mydata$`Happiness Score`[mydata$`region.factorWestern Europe` == TRUE]
+
+wehmean <- mean(west_europe_happiness)
+
+# Sub-Saharan Africa Happiness
+subsaharan_africa_happiness<- mydata$`Happiness Score`[mydata$`region.factorSub-Saharan Africa` == TRUE]
+
+ssamean <- mean(subsaharan_africa_happiness)
+
+# Southern Asia Happiness
+SoAsia_happiness<- mydata$`Happiness Score`[mydata$`region.factorSouthern Asia` == TRUE]
+
+SoAsiamean <- mean(SoAsia_happiness)
+
+# Southeastern Asia Happiness
+SoEaAsia_happiness<- mydata$`Happiness Score`[mydata$`region.factorSoutheastern Asia` == TRUE]
+
+SoEaAsiamean <- mean(SoEaAsia_happiness)
+
+# North America Happiness
+NoAm_happiness<- mydata$`Happiness Score`[mydata$`region.factorNorth America` == TRUE]
+
+NoAmmean <- mean(NoAm_happiness)
+
+# Middle East and Northern Africa Happiness
+MENA_happiness<- mydata$`Happiness Score`[mydata$`region.factorMiddle East and Northern Africa` == TRUE]
+
+MENAmean <- mean(MENA_happiness)
+
+# Latin America and Caribbean Happiness
+LA_happiness<- mydata$`Happiness Score`[mydata$`region.factorLatin America and Caribbean` == TRUE]
+
+LAmean <- mean(LA_happiness)
+
+# Eastern Asia Happiness
+EaAs_happiness<- mydata$`Happiness Score`[mydata$`region.factorEastern Asia` == TRUE]
+
+EaAsmean <- mean(EaAs_happiness)
+
+# Central and Eastern Europe Happiness
+CeEaEu_happiness<- mydata$`Happiness Score`[mydata$`region.factorCentral and Eastern Europe` == TRUE]
+
+CeEaEumean <- mean(CeEaEu_happiness)
+
+happ_names <- c("Western Europe", "Sub-Saharan Africa", "Southern Asia", "Southeastern Asia", "North America", "Middle East and Northern Africa ",  "Latin America and Caribbean", "Eastern Asia", "Central and Eastern Europe")
+
+happ_vars <- c(wehmean, ssamean, SoAsiamean, SoEaAsiamean, NoAmmean, MENAmean, LAmean, EaAsmean, CeEaEumean)
+
+df_happs <- data.frame(Names = happ_names, Means = happ_vars)
+
+format_table(df_happs)
+
+par(mar=c(11,4,4,4))
+barplot(happ_vars, names.arg = happ_names, las=2, ylab = "Mean Happiness", col = c("firebrick1", "cornsilk", "darkorchid1", "firebrick1", "cornsilk", "darkorchid1", "firebrick1", "", "darkorchid1"))
+```
+
+As we can see from the table and barplot above, there is a good amount of variance within the happiness levels of each region. 
+
+We can see that the happiest regions are North America, Western Europe and Latin America & the Caribbean. 
+
+We can also see that the least happy regions are sub-saharan Africa and Southern Asia. 
+
+We can also compare above with the dotplot shown at the beginning: 
+
+```{r, echo=TRUE}
+ggplot(mydata, aes(`Region`, `Happiness Score`)) + geom_point(aes(colour = Region), size=2) + scale_color_viridis(option = "plasma" ,discrete = T) + theme_minimal() + theme(text = element_text(size=14), axis.text.x = element_text(size = 10, angle = 45, hjust = 1, vjust = 1))
+```
+
+Which, admittedly, looks much nicer. 
+
+
+### How much of a difference does money really make?
+
+#### Local Regression 
+
+We will use local regression to fit our data. 
+
+```{r, echo=TRUE}
+  mydata %>%
+  mutate(loess = predict(loess(mydata$`Happiness Score` ~ mydata$`GDP per Capita`, span = 0.5, data = mydata))) %>%
+  ggplot(aes(mydata$`GDP per Capita`, mydata$`Happiness Score`)) +
+  geom_point(color = "firebrick1") +
+  geom_line(aes(y = loess)) + 
+    ggtitle("How Income Affects Happiness: Span 0.5") + 
+    ylab("Happiness Score") + xlab("GDP per Capita")
+
+  mydata %>%
+  mutate(loess = predict(loess(mydata$`GDP per Capita` ~ mydata$`Happiness Score`, span = 0.5, data = mydata))) %>%
+  ggplot(aes(mydata$`Happiness Score`, mydata$`GDP per Capita`)) +
+  geom_point(color = "firebrick1") +
+  geom_line(aes(y = loess)) + 
+    ggtitle("How Income Affects Happiness: Span 0.5") + 
+    xlab("Happiness Score") + ylab("GDP per Capita")
+
+fit1 <- predict(loess(mydata$`GDP per Capita` ~ mydata$`Happiness Score`, span = 0.2, data = mydata))
+
+summary(fit1)
+
+fit2 <- predict(loess(mydata$`GDP per Capita` ~ mydata$`Happiness Score`, span = 0.5, data = mydata))
+
+summary(fit2)
+
+```
+
+From the graphs and the quartile ranges above, we see that there is not much of a difference in income between the 1st, 2nd, and 3rd quartiles. The main takeaway from these graphs is the sheer difference in wealth distribution. The data is very skewed towards very low incomes (due to the global wealth distribution amongst countries), but we still have countries in the 6 - 7 range for happiness scores. 
+
+That being said, having a high GDP per Capita is consistent with having higher levels of happiness. This type of data would be more revealing with many more data points across the spectrum of the higher incomes (50, 60, 70, 80, 90, 100+ k/year).
+
+Looking at the lower GDP areas, there is only a slight trend that GDP affects happiness levels.
+
+Note: Since Local Regression is a graphical, exploratory tool without a goodness of fit metric (it essentially is a sliding window of neighborhood fits pieced together), there is not a quantitative measure of R^2^. Instead, it is a more qualitative fit. 
+
+Lets try a more quantitative fit with a Generalized Additive Model: 
+
+#### Generalized Additive Models
+
+Perhaps we want to see how happiness is affected by not only GDP, but also freedom, government type and government trust. We can model this using a generalized additive model: 
+
+```{r, echo=TRUE}
+
+gam1 <- gam(`Happiness Score`~ lo(`GDP per Capita`, span=0.2)+ s(`Freedom`, 4)+ s(`Trust (Government Corruption)`, 4)+`Government Type`, data=mydata)
+
+gam2 <- gam(`Happiness Score`~s(mydata$`GDP per Capita`, 4), data=mydata)
+
+summary(gam1)
+
+mean(gam1$residuals^2)
+
+coef(gam1)
+
+```
+
+From the above, we see that with a generalized linear model that treats GDP per capita as a local regression, Freedom as a smoothing spline, Trust as a smoothing spline and government type as a set of 4 dummy variables gets a very low MSE of .227, signifying a very good fit. 
+
+Interpretation of model: 
+
+* Freedom is most important to happiness for this model
+
+* Following closeby is trust in government. This mirrors what we found out earlier in "What affects happiness?"
+
+* Of the government types, republic > constitutional monarchy > communist state when it comes to happiness. 
+
+* GDP per Capita is negligible in comparison to the above. 
+
+#### So, money? 
+
+Not that important.
+
+
+### Citations and Resources
+
+Description of Variables taken from: 
+```
+http://worldhappiness.report/wp-content/uploads/sites/2/2017/03/StatisticalAppendixWHR2017.pdf
+
+https://en.wikipedia.org/wiki/List_of_countries_by_literacy_rate
+
+https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_population
+
+https://www.cia.gov/library/publications/the-world-factbook/rankorder/2091rank.html
+
+https://en.wikipedia.org/wiki/List_of_countries_by_net_migration_rate
+
+https://en.wikipedia.org/wiki/List_of_countries_by_unemployment_rate
+
+https://en.wikipedia.org/wiki/List_of_countries_by_system_of_government
+```
+
+Description of Methods taken from: 
+
+```
+Introduction to Statistical Learning: Trevor Hastie, Rob Tibshiriani, Daniela Witten, Gareth James
+
+https://www.openml.org/a/estimation-procedures/1
+
+https://beta.vu.nl/nl/Images/werkstuk-fonti_tcm235-836234.pdf
+
+https://en.wikipedia.org/wiki/Local_regression
+
+https://en.wikipedia.org/wiki/Smoothing_spline
+
+https://en.wikipedia.org/wiki/Generalized_additive_model
+
+http://blog.minitab.com/blog/adventures-in-statistics-2/regression-analysis-how-do-i-interpret-r-squared-and-assess-the-goodness-of-fit
+
+http://blog.minitab.com/blog/adventures-in-statistics-2/multiple-regession-analysis-use-adjusted-r-squared-and-predicted-r-squared-to-include-the-correct-number-of-variables
+
+http://blog.minitab.com/blog/statistics-and-quality-improvement/process-capability-statistics-cp-and-cpk-working-together
+
+https://en.wikipedia.org/wiki/Bayesian_information_criterion
+
+```
